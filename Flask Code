@@ -1,0 +1,97 @@
+# --- 1. INSTALL LIBRARIES ---
+# We now use pyngrok instead of flask-ngrok
+!pip install flask pyngrok scikit-learn pandas joblib
+
+# --- 2. IMPORT LIBRARIES & SETUP THE APP ---
+from flask import Flask, request, jsonify
+from pyngrok import ngrok # Replaced flask_ngrok
+import joblib
+import numpy as np
+from google.colab import userdata # To access secrets
+
+app = Flask(__name__)
+
+# --- 3. LOAD THE TRAINED MODEL ---
+# Ensure 'fanfic_model.pkl' has been uploaded to your Colab session.
+try:
+    model = joblib.load('fanfic_model.pkl')
+    print("✅ Model loaded successfully.")
+except FileNotFoundError:
+    model = None
+    print("❌ Error: 'fanfic_model.pkl' not found. Please upload it first.")
+
+
+# --- 4. DEFINE STORY TEMPLATES & DATA FUNCTIONS ---
+
+# The keys MUST match the archetypes in your dataset.
+STORY_TEMPLATES = {
+    "Cyberpunk Mercenary": (
+        "In the neon-soaked streets of Neo-Kyoto, {user_name} was a legend whispered in hushed tones. "
+        "They operated best in the dead of night, fueled by the driving, industrial beats of {top_artist}. "
+        "Their latest job was a data heist targeting the OmniCorp tower, a fortress of code built with {language}. "
+        "With their magnum opus, a custom intrusion software named '{repo_name}', they brought the corporate giant to its knees."
+    ),
+    "Starlight Bard": (
+        "Across the galaxy, from dusty desert moons to glittering ecumenopoleis, everyone knew the name {user_name}. "
+        "They traveled the star-lanes with their trusty electro-lute, their adventures chronicled in ballads influenced by {top_artist}. "
+        "Their most famous work was '{repo_name}', a universally compatible translator built with {language}, "
+        "a project that had united countless star systems in song and story."
+    ),
+    "Grove Tender": (
+        "Deep within the Whispering Woods, {user_name} was a guardian of ancient secrets. "
+        "They drew strength from the earth, their work accompanied by the serene, acoustic melodies of {top_artist}. "
+        "They were the sole creator of the '{repo_name}', a living codex of all the forest's flora and fauna, "
+        "meticulously crafted using the elegant syntax of {language} to preserve the old magic."
+    ),
+    "Mad Scientist": (
+        "From their chaotic laboratory, the distinct and energetic sounds of {top_artist} could be heard at all hours. "
+        "Here, the brilliant but eccentric {user_name} conducted their wild experiments. "
+        "Their latest creation, '{repo_name}', was a chaotic but genius contraption written in {language} "
+        "that could unpredictably rewrite the laws of physics. It was dangerous, it was unstable, and it was beautiful."
+    )
+}
+
+# These are placeholder functions. You will replace their logic with real API calls.
+def get_spotify_data(username):
+    print(f" MOCK: Fetching Spotify data for {username}... ")
+    return {'Energy': np.random.uniform(0.1, 1.0), 'Valence': np.random.uniform(0.1, 1.0), 'Acousticness': np.random.uniform(0.0, 1.0), 'Danceability': np.random.uniform(0.1, 1.0), 'top_artist': 'The Chemical Brothers'}
+
+def get_github_data(username):
+    print(f" MOCK: Fetching GitHub data for {username}... ")
+    return {'Commit Frequency': np.random.randint(1, 30), 'Language Diversity': np.random.randint(1, 8), 'language': 'C++', 'repo_name': 'Project Chimera'}
+
+
+# --- 5. DEFINE THE FLASK API ENDPOINT ---
+@app.route('/generate', methods=['POST'])
+def generate_story():
+    # (This entire function remains exactly the same as before)
+    if model is None:
+        return jsonify({"error": "Model is not loaded on the server."}), 500
+    json_data = request.get_json()
+    if not json_data or 'spotify_username' not in json_data or 'github_username' not in json_data:
+        return jsonify({"error": "Request must include 'spotify_username' and 'github_username'."}), 400
+    spotify_user, github_user = json_data['spotify_username'], json_data['github_username']
+    try:
+        spotify_data, github_data = get_spotify_data(spotify_user), get_github_data(github_user)
+        feature_vector = [spotify_data['Energy'], spotify_data['Valence'], spotify_data['Acousticness'], spotify_data['Danceability'], github_data['Commit Frequency'], github_data['Language Diversity']]
+        prediction_input = np.array(feature_vector).reshape(1, -1)
+        predicted_archetype = model.predict(prediction_input)[0]
+        story_template = STORY_TEMPLATES.get(predicted_archetype, "A story for this archetype has not been written yet.")
+        story_details = {"user_name": github_user, "top_artist": spotify_data['top_artist'], "language": github_data['language'], "repo_name": github_data['repo_name']}
+        final_story = story_template.format(**story_details)
+        return jsonify({"predicted_archetype": predicted_archetype, "story": final_story})
+    except Exception as e:
+        return jsonify({"error": f"An unexpected error occurred: {str(e)}"}), 500
+
+
+# --- 6. RUN THE APPLICATION ---
+# This new block authenticates ngrok and starts the tunnel correctly.
+NGROK_AUTHTOKEN = userdata.get('NGROK_AUTHTOKEN')
+ngrok.set_auth_token(NGROK_AUTHTOKEN)
+
+# Start a tunnel on port 5000
+public_url = ngrok.connect(5000)
+print(f"✅ Your public URL is: {public_url}")
+
+# Start the Flask app
+app.run(port=5000)

@@ -1,0 +1,24 @@
+import requests
+import json
+
+# ❗️ PASTE YOUR PUBLIC URL HERE
+url = "https://margarete-phonotypic-olimpia.ngrok-free.dev/generate"
+
+# The data to send to your API
+data = {
+    "spotify_username": "testuser",
+    "github_username": "TheProtagonist"
+}
+
+# Add this header to bypass the ngrok browser warning
+headers = {
+    "ngrok-skip-browser-warning": "true"
+}
+
+# "Call" your running server
+print("🚀 Sending request to your server...")
+response = requests.post(url, json=data, headers=headers)
+
+# Print the story you get back!
+print("\n--- SERVER RESPONSE ---")
+print(response.json())
